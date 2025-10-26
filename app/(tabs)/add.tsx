@@ -161,7 +161,8 @@ export default function AddScreen() {
 
     // Componente de card de livro
     const BookCard = ({book}: { book: Book }) => (
-        <TouchableOpacity style={styles.bookCard}>
+        <TouchableOpacity style={styles.bookCard}
+        onPress={()=> router.push(`/book/book-details?bookId=${book.id}`)}>
             <Image
                 source={{uri: book.cover}}
                 style={styles.bookCover}
