@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,20 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/auth-context';
+import { useBooks } from '@/contexts/BooksContext';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { books, loading, refreshBooks } = useBooks();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshBooks();
+    setRefreshing(false);
+  }
+
 
   const handleLogout = () => {
     Alert.alert(
@@ -51,7 +61,7 @@ export default function ProfileScreen() {
       {/* Stats */}
       <View style={styles.statsSection}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>0</Text>
+          <Text style={styles.statNumber}>{books.length}</Text>
           <Text style={styles.statLabel}>Livros</Text>
         </View>
         <View style={styles.statDivider} />
@@ -61,7 +71,9 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>0</Text>
+          <Text style={styles.statNumber}>
+            {books.filter(b => b.status === 'completed').length}
+          </Text>
           <Text style={styles.statLabel}>Concluídos</Text>
         </View>
       </View>
