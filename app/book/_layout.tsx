@@ -18,6 +18,7 @@ export default function BookLayout() {
                         height: Platform.OS === 'ios' ? 88 : 60,
                         paddingBottom: Platform.OS === 'ios' ? 30 : 10,
                         paddingTop: 2,
+                        display: 'none',
                     },
                     tabBarLabelStyle: {
                         fontSize: 12,
