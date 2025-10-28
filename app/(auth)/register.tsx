@@ -1,18 +1,18 @@
+import { database } from '@/src/services/database';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { database } from '@/services/database';
 
 export default function RegisterScreen() {
   const router = useRouter();

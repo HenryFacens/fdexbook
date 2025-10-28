@@ -1,8 +1,8 @@
-import {Tabs} from 'expo-router';
+import { BooksProvider } from '@/src/contexts/BooksContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
 import React from 'react';
-import {Platform} from 'react-native';
-import {Ionicons} from '@expo/vector-icons';
-import {BooksProvider} from '@/contexts/BooksContext';
+import { Platform } from 'react-native';
 
 export default function TabLayout() {
     return (

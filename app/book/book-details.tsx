@@ -1,22 +1,22 @@
-import React, {useState, useRef, useEffect} from 'react';
-import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    Image,
-    TouchableOpacity,
-    Alert,
-    TextInput,
-    Share,
-} from 'react-native';
-import {useRouter, useLocalSearchParams} from 'expo-router';
-import {Ionicons} from '@expo/vector-icons';
-import QRCode from 'react-native-qrcode-svg';
+import { useBooks } from '@/src/contexts/BooksContext';
+import { database, UserBookDetail } from '@/src/services/database';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Alert,
+    Image,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import ViewShot from 'react-native-view-shot';
-import {database, UserBookDetail} from '@/services/database';
-import { useBooks } from '@/contexts/BooksContext';
 
 export default function BookDetailsScreen() {
     const router = useRouter();

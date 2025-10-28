@@ -1,6 +1,6 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { database } from '@/services/database';
+import { database } from '@/src/services/database';
 import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function DebugScreen() {
   const [users, setUsers] = useState<any[]>([]);

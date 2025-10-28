@@ -1,7 +1,7 @@
-import {Tabs} from 'expo-router';
+import { BooksProvider } from '@/src/contexts/BooksContext';
+import { Tabs } from 'expo-router';
 import React from 'react';
-import {Platform} from 'react-native';
-import {BooksProvider} from '@/contexts/BooksContext';
+import { Platform } from 'react-native';
 
 export default function BookLayout() {
     return (

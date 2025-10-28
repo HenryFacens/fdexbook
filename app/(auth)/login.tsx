@@ -1,18 +1,18 @@
+import { useAuth } from '@/src/contexts/auth-context';
+import { database } from '@/src/services/database';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  ActivityIndicator,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { database } from '@/services/database';
-import { useAuth } from '@/contexts/auth-context';
 
 export default function LoginScreen() {
   const router = useRouter();

@@ -1,22 +1,22 @@
-import React, {useState, useEffect} from 'react';
+import { useBooks } from '@/src/contexts/BooksContext';
+import { User } from '@/src/services/database';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    TouchableOpacity,
-    Image,
-    RefreshControl,
-    Modal,
     Alert,
     Dimensions,
+    Image,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {Ionicons} from '@expo/vector-icons';
-import {CameraView, useCameraPermissions} from 'expo-camera';
-import {useRouter} from 'expo-router';
-import {User, database} from '@/services/database';
-import { useBooks } from '@/contexts/BooksContext';
 
 const {width} = Dimensions.get('window');
 const SCAN_AREA_SIZE = width * 0.7;

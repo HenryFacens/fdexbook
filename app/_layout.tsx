@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { AuthProvider, useAuth } from '@/contexts/auth-context';
+import { AuthProvider, useAuth } from '@/src/contexts/auth-context';
+import { useColorScheme } from '@/src/hooks/use-color-scheme';
 
 export const unstable_settings = {
   initialRouteName: '(auth)',

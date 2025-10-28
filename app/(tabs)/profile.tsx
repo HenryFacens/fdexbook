@@ -1,16 +1,16 @@
-import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { useAuth } from '@/src/contexts/auth-context';
+import { useBooks } from '@/src/contexts/BooksContext';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/contexts/auth-context';
-import { useBooks } from '@/contexts/BooksContext';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();

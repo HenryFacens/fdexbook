@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { User } from '@/src/services/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User } from '@/services/database';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 interface AuthContextType {
   user: User | null;
