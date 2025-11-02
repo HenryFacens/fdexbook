@@ -6,16 +6,16 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import ViewShot from 'react-native-view-shot';
@@ -149,22 +149,22 @@ export default function BookDetailsScreen() {
   };
 
   // ✅ agora tipado corretamente
-  const startQuiz = () => {
-    if (!book) return;
-    setQuizModalVisible(false);
+const startQuiz = () => {
+  if (!book) return;
+  setQuizModalVisible(false);
 
-    const href: Href = {
-      pathname: '/quiz/quiz',
-      params: {
-        bookId: String(book.id),
-        bookTitle: book.title,
-        userBookId: String(book.userBookId),
-      },
-    };
-
-    router.push(href);
+  const href: Href = {
+    pathname: '/quiz/quiz',
+    params: {
+      bookId: String(book.id || book.book),       // ✅ ID do catálogo
+      bookTitle: book.title,         // opcional (UI)
+      bookAuthor: book.author,       // opcional (UI)
+      userBookId: String(book.userBookId), // opcional (tracking)
+    },
   };
 
+  router.push(href);
+};
   const captureAndShareQRCode = async () => {
     try {
       if (viewShotRef.current) {

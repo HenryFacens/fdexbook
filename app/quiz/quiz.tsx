@@ -1,4 +1,3 @@
-// app/quiz/quiz.tsx
 import { getQuizByBookId, type MockQuizQuestion } from '@/src/mocks/books';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -11,37 +10,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 /** ===== Helpers ===== */
 const PRIMARY = '#6C63FF';
-
-// transforma múltipla escolha em “resposta aberta”
-function toOpenAnswer(questions: MockQuizQuestion[]) {
-  // mapeia emojis simples só para dar um charme visual
-  const emojiPool = ['📘', '✨', '🪄', '🏰', '🧩', '📚', '🧠', '🌟', '🧪', '🗺️'];
-  return questions.slice(0, 5).map((q, i) => {
-    const correct = q.options[q.correctIndex] ?? '';
-    return {
-      id: q.id,
-      question: q.question,
-      correctAnswer: correct,
-      image: emojiPool[i % emojiPool.length],
-    };
-  });
-}
-
-// normaliza texto para comparação: minúsculas, sem acento, trim
-function norm(s: string) {
-  return s
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim();
-}
+const EMOJIS = ['📘', '✨', '🪄', '🏰', '🧩', '📚', '🧠', '🌟', '🧪', '🗺️'];
 
 type Params = {
   bookId?: string;
@@ -54,20 +29,44 @@ export default function QuizScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<Params>();
 
-  // carrega perguntas mockadas por bookId e converte para resposta aberta
-  const QUIZ_QUESTIONS = useMemo(() => {
-    const id = Number(params.bookId);
-    if (!Number.isFinite(id)) return [];
-    const choiceQs = getQuizByBookId(id);
-    return toOpenAnswer(choiceQs);
+  // Emojis locais (evita depender de outro helper)
+  const EMOJIS = ['📘', '✨', '🪄', '🏰', '🧩', '📚', '🧠', '🌟', '🧪', '🗺️'];
+  const emojiFor = (idx: number) => EMOJIS[idx % EMOJIS.length];
+
+  // 🔒 bookId seguro (ignora "", "undefined", arrays etc.)
+  const bookId = useMemo<number | null>(() => {
+    const raw = Array.isArray(params.bookId) ? params.bookId[0] : params.bookId;
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
   }, [params.bookId]);
 
+  // 🔑 força REMOUNT quando o bookId muda (zera todo estado da tela automaticamente)
+  const bookKey = String(bookId ?? 'no-book');
+
+  // carrega perguntas mockadas (múltipla escolha) por bookId
+  const QUIZ_QUESTIONS = useMemo<MockQuizQuestion[]>(() => {
+    if (bookId === null) return [];
+    const qs = getQuizByBookId(bookId);
+    // sem fallback para outro livro; se não houver, retorna vazio
+    return Array.isArray(qs) ? qs : [];
+  }, [bookId]);
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answer, setAnswer] = useState('');
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [score, setScore] = useState(0);
 
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+
+  // 🧹 zera estados ao trocar de livro
+  React.useEffect(() => {
+    setCurrentQuestion(0);
+    setSelectedOption(null);
+    setScore(0);
+    setFeedbackVisible(false);
+    setIsCorrect(null);
+  }, [bookId]);
 
   const question = QUIZ_QUESTIONS[currentQuestion];
   const progress =
@@ -78,19 +77,13 @@ export default function QuizScreen() {
   const handleSkip = () => {
     Alert.alert('Sair do quiz?', 'Seu progresso atual será perdido.', [
       { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: () => router.back(),
-      },
+      { text: 'Sair', style: 'destructive', onPress: () => router.back() },
     ]);
   };
 
   const handleNext = () => {
-    if (!answer.trim()) return;
-
-    // decide se acertou (tolerante a acentos/caso)
-    const ok = norm(answer) === norm(question.correctAnswer);
+    if (selectedOption === null || !question) return;
+    const ok = selectedOption === question.correctIndex;
     setIsCorrect(ok);
     setFeedbackVisible(true);
     if (ok) setScore((s) => s + 1);
@@ -112,13 +105,15 @@ export default function QuizScreen() {
 
     const isLast = currentQuestion === QUIZ_QUESTIONS.length - 1;
     if (isLast) {
-      const passed = score >= 4; // regra 4/5
+      // ✅ regra dinâmica: 80% de acertos, com piso de 4
+      const required = Math.max(4, Math.ceil(QUIZ_QUESTIONS.length * 0.8));
+      const passed = score >= required;
       navigateToResult(passed);
       return;
     }
 
     setCurrentQuestion((q) => q + 1);
-    setAnswer('');
+    setSelectedOption(null);
     setIsCorrect(null);
   };
 
@@ -140,6 +135,7 @@ export default function QuizScreen() {
 
   return (
     <KeyboardAvoidingView
+      key={bookKey} // 👈 remount ao trocar de livro
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
@@ -174,7 +170,7 @@ export default function QuizScreen() {
 
         {/* Ícone/Imagem da Pergunta */}
         <View style={styles.questionImageContainer}>
-          <Text style={styles.questionEmoji}>{question.image}</Text>
+          <Text style={styles.questionEmoji}>{emojiFor(currentQuestion)}</Text>
         </View>
 
         {/* Pergunta */}
@@ -183,20 +179,25 @@ export default function QuizScreen() {
           <Text style={styles.questionText}>{question.question}</Text>
         </View>
 
-        {/* Campo de Resposta */}
+        {/* Opções (Múltipla Escolha) */}
         <View style={styles.answerSection}>
-          <Text style={styles.answerLabel}>Sua Resposta:</Text>
-          <TextInput
-            style={styles.answerInput}
-            value={answer}
-            onChangeText={setAnswer}
-            placeholder="Digite sua resposta aqui..."
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            returnKeyType="done"
-            blurOnSubmit
-          />
+          <Text style={styles.answerLabel}>Escolha uma opção:</Text>
+          {question.options.map((opt, i) => {
+            const selected = selectedOption === i;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={[styles.optionButton, selected && styles.optionButtonSelected]}
+                onPress={() => setSelectedOption(i)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                  {selected && <View style={styles.radioInner} />}
+                </View>
+                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{opt}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Dica */}
@@ -209,9 +210,9 @@ export default function QuizScreen() {
 
         {/* Botão Próxima */}
         <TouchableOpacity
-          style={[styles.nextButton, !answer.trim() && styles.nextButtonDisabled]}
+          style={[styles.nextButton, selectedOption === null && styles.nextButtonDisabled]}
           onPress={handleNext}
-          disabled={!answer.trim()}
+          disabled={selectedOption === null}
         >
           <Text style={styles.nextButtonText}>
             {currentQuestion === QUIZ_QUESTIONS.length - 1 ? 'Finalizar Quiz' : 'Verificar Resposta'}
@@ -246,13 +247,13 @@ export default function QuizScreen() {
                 </View>
 
                 <Text style={styles.feedbackTitle}>Correto! 🎉</Text>
-                <Text style={styles.feedbackMessage}>
-                  Excelente! Você respondeu corretamente.
-                </Text>
+                <Text style={styles.feedbackMessage}>Excelente! Você respondeu corretamente.</Text>
 
                 <View style={styles.correctAnswerBox}>
                   <Text style={styles.correctAnswerLabel}>Sua resposta:</Text>
-                  <Text style={styles.userAnswer}>{answer}</Text>
+                  <Text style={styles.userAnswer}>
+                    {selectedOption !== null ? question.options[selectedOption] : ''}
+                  </Text>
                 </View>
               </>
             ) : (
@@ -273,7 +274,9 @@ export default function QuizScreen() {
                 <View style={styles.answersComparison}>
                   <View style={styles.answerComparisonBox}>
                     <Text style={styles.answerComparisonLabel}>Sua resposta:</Text>
-                    <Text style={styles.userAnswerIncorrect}>{answer}</Text>
+                    <Text style={styles.userAnswerIncorrect}>
+                      {selectedOption !== null ? question.options[selectedOption] : ''}
+                    </Text>
                   </View>
 
                   <Ionicons name="arrow-forward" size={20} color="#999" style={{ marginHorizontal: 10 }} />
@@ -281,7 +284,7 @@ export default function QuizScreen() {
                   <View style={styles.answerComparisonBox}>
                     <Text style={styles.answerComparisonLabel}>Resposta correta:</Text>
                     <Text style={styles.correctAnswerText}>
-                      {question.correctAnswer.charAt(0).toUpperCase() + question.correctAnswer.slice(1)}
+                      {question.options[question.correctIndex]}
                     </Text>
                   </View>
                 </View>
@@ -349,16 +352,51 @@ const styles = StyleSheet.create({
 
   answerSection: { marginBottom: 15 },
   answerLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 10 },
-  answerInput: {
+
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: PRIMARY,
     borderRadius: 12,
-    padding: 15,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  optionButtonSelected: {
+    backgroundColor: PRIMARY,
+    borderColor: PRIMARY,
+  },
+  optionText: {
     fontSize: 16,
-    minHeight: 100,
-    maxHeight: 150,
     color: '#333',
+    flexShrink: 1,
+  },
+  optionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: PRIMARY,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  radioOuterSelected: {
+    borderColor: '#fff',
+    backgroundColor: '#fff',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: PRIMARY,
   },
 
   hintContainer: {
@@ -445,4 +483,3 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 22, fontWeight: '800', color: PRIMARY, marginBottom: 8 },
   emptySub: { fontSize: 14, color: '#444', textAlign: 'center' },
 });
-5
