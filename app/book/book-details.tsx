@@ -1,4 +1,3 @@
-// app/book/book-details.tsx
 import { useBooks } from '@/src/contexts/BooksContext';
 import { database, UserBookDetail } from '@/src/services/database';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,10 +38,8 @@ export default function BookDetailsScreen() {
 
   useEffect(() => {
     loadBook();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Ao voltar do quiz, marca como "Lido" se passou
   useEffect(() => {
     const handleQuizResult = async () => {
       if (!book) return;
@@ -61,7 +58,6 @@ export default function BookDetailsScreen() {
       }
     };
     handleQuizResult();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params?.quizResult, book?.userBookId]);
 
   const loadBook = async () => {
@@ -148,7 +144,6 @@ export default function BookDetailsScreen() {
     ]);
   };
 
-  // ✅ agora tipado corretamente
 const startQuiz = () => {
   if (!book) return;
   setQuizModalVisible(false);
@@ -156,21 +151,21 @@ const startQuiz = () => {
   const href: Href = {
     pathname: '/quiz/quiz',
     params: {
-      bookId: String(book.id || book.book),       // ✅ ID do catálogo
-      bookTitle: book.title,         // opcional (UI)
-      bookAuthor: book.author,       // opcional (UI)
-      userBookId: String(book.userBookId), // opcional (tracking)
+      bookId: String(book.id),      
+      bookTitle: book.title,
+      bookAuthor: book.author,
+      userBookId: String(book.userBookId),
     },
   };
 
   router.push(href);
 };
+
   const captureAndShareQRCode = async () => {
     try {
       if (viewShotRef.current) {
         const uri = await viewShotRef.current.capture?.();
         if (uri && (await Sharing.isAvailableAsync())) {
-          // await Sharing.shareAsync(uri);
         } else {
           Alert.alert('Erro', 'Compartilhamento não disponível neste dispositivo');
         }
@@ -558,7 +553,6 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, color: '#666', fontWeight: '600' },
   statusTextActive: { color: '#fff' },
 
-  // --- Modal Quiz ---
   modalOverlayCenter: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

@@ -1,89 +1,90 @@
 import * as SQLite from 'expo-sqlite';
 
-interface User {
+export interface User {
   id: number;
   username: string;
   email: string;
   password: string;
-  createdAt: string;
+  createdAt?: string;
 }
-
-// 📚 Livro no catálogo geral
-interface Book {
+export interface Book {
   id: number;
+  uuid?: string;     
   title: string;
   author: string;
-  genre: string;
-  cover: string;
-  pages: number;
-  isbn?: string;
-  description?: string;
-  createdAt: string;
+  genre?: string;
+  cover?: string;
+  pages: number;      
+  isbn?: string | null;
+  description?: string | null;
+  createdAt?: string;
 }
 
-// 📖 Livro na biblioteca do usuário
-interface UserBook {
+export interface UserBook {
   id: number;
   userId: number;
   bookId: number;
   currentPage: number;
   status: 'reading' | 'completed' | 'wishlist';
-  notes?: string;
-  startedAt?: string;
-  completedAt?: string;
-  createdAt: string;
+  notes?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
 }
 
-// 📕 Livro completo (com dados do catálogo + dados do usuário)
-interface UserBookDetail extends Book {
+export interface UserBookDetail extends Book {
   userBookId: number;
   currentPage: number;
   status: 'reading' | 'completed' | 'wishlist';
-  notes?: string;
-  startedAt?: string;
-  completedAt?: string;
+  notes?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 }
 
 class DatabaseService {
   private db: SQLite.SQLiteDatabase;
   private readonly DB_VERSION = 2;
+  private readonly DB_NAME = 'dexbook.db';
 
   constructor() {
-    this.db = SQLite.openDatabaseSync('dexbook.db');
+    this.db = SQLite.openDatabaseSync?.(this.DB_NAME) ?? (SQLite as any).openDatabase(this.DB_NAME);
+
+    try {
+      this.db.execSync?.('PRAGMA foreign_keys = ON;');
+    } catch {
+      try { (this.db as any).exec('PRAGMA foreign_keys = ON;'); } catch {}
+    }
+
     this.initDatabase();
   }
 
   private async getDatabaseVersion(): Promise<number> {
     try {
-      // Cria tabela de versão se não existir
-      this.db.execSync(`
+      this.db.execSync?.(`
         CREATE TABLE IF NOT EXISTS db_version (
           version INTEGER PRIMARY KEY
         );
       `);
-
-      const result = await this.db.getFirstAsync<{ version: number }>(
+      const row = await this.db.getFirstAsync<{ version: number }>(
         'SELECT version FROM db_version LIMIT 1'
       );
-
-      return result?.version ?? 0;
-    } catch (error) {
+      return row?.version ?? 0;
+    } catch {
       return 0;
     }
   }
 
   private async setDatabaseVersion(version: number) {
     try {
-      this.db.execSync('DELETE FROM db_version;');
-      await this.db.runAsync('INSERT INTO db_version (version) VALUES (?)', [version]);
+      this.db.execSync?.('DELETE FROM db_version;');
+      await this.db.runAsync?.('INSERT INTO db_version (version) VALUES (?)', [version]);
     } catch (error) {
       console.error('❌ Error setting database version:', error);
     }
   }
 
   private createTables() {
-    // Tabela de usuários
-    this.db.execSync(`
+    this.db.execSync?.(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -93,10 +94,10 @@ class DatabaseService {
       );
     `);
 
-    // 📚 Tabela de livros (catálogo geral)
-    this.db.execSync(`
+    this.db.execSync?.(`
       CREATE TABLE IF NOT EXISTS books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT UNIQUE, -- pode ser NULL em bases antigas, mas com índice UNIQUE
         title TEXT NOT NULL,
         author TEXT NOT NULL,
         genre TEXT,
@@ -108,8 +109,11 @@ class DatabaseService {
       );
     `);
 
-    // 📖 Tabela de livros do usuário (vínculo)
-    this.db.execSync(`
+    try {
+      this.db.execSync?.('CREATE UNIQUE INDEX IF NOT EXISTS idx_books_title_author ON books(title, author);');
+    } catch {}
+
+    this.db.execSync?.(`
       CREATE TABLE IF NOT EXISTS user_books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userId INTEGER NOT NULL,
@@ -126,30 +130,36 @@ class DatabaseService {
       );
     `);
 
-    console.log('✅ Tables created');
+    console.log('✅ Tables created/ensured');
   }
 
   private async migrateDatabase(fromVersion: number) {
-    console.log(`🔄 Migrating database from version ${fromVersion} to ${this.DB_VERSION}`);
+    console.log(`🔄 Migrating database from v${fromVersion} to v${this.DB_VERSION}`);
 
     if (fromVersion < 2) {
-      // Migration de v1 para v2: adiciona colunas isbn e description
       try {
-        const tableInfo = await this.db.getAllAsync<any>('PRAGMA table_info(books)');
-        const hasIsbn = tableInfo.some((col: any) => col.name === 'isbn');
-        const hasDescription = tableInfo.some((col: any) => col.name === 'description');
+        const cols = await this.db.getAllAsync<{ name: string }>('PRAGMA table_info(books);');
+        const hasIsbn = cols.some(c => c.name === 'isbn');
+        const hasDescription = cols.some(c => c.name === 'description');
+        const hasUuid = cols.some(c => c.name === 'uuid');
 
         if (!hasIsbn) {
-          this.db.execSync('ALTER TABLE books ADD COLUMN isbn TEXT UNIQUE;');
-          console.log('✅ Added isbn column');
+          this.db.execSync?.('ALTER TABLE books ADD COLUMN isbn TEXT UNIQUE;');
+          console.log('✅ Added books.isbn');
         }
-
         if (!hasDescription) {
-          this.db.execSync('ALTER TABLE books ADD COLUMN description TEXT;');
-          console.log('✅ Added description column');
+          this.db.execSync?.('ALTER TABLE books ADD COLUMN description TEXT;');
+          console.log('✅ Added books.description');
+        }
+        if (!hasUuid) {
+          this.db.execSync?.('ALTER TABLE books ADD COLUMN uuid TEXT;');
+          try {
+            this.db.execSync?.('CREATE UNIQUE INDEX IF NOT EXISTS idx_books_uuid ON books(uuid);');
+          } catch {}
+          console.log('✅ Added books.uuid (+ unique index)');
         }
       } catch (error) {
-        console.error('❌ Error in migration v1 to v2:', error);
+        console.error('❌ Error migrating to v2:', error);
       }
     }
   }
@@ -162,8 +172,11 @@ class DatabaseService {
       this.createTables();
       await this.seedInitialBooks();
     } else if (currentVersion < this.DB_VERSION) {
+      this.createTables(); 
       await this.migrateDatabase(currentVersion);
     }
+
+    await this.ensureBooksTableWithUuid();
 
     await this.setDatabaseVersion(this.DB_VERSION);
     console.log('✅ Database initialized');
@@ -171,121 +184,156 @@ class DatabaseService {
 
   private async seedInitialBooks() {
     console.log('🌱 Seeding initial books...');
+    const count = await this.db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM books;');
+    if ((count?.n ?? 0) > 0) {
+      console.log('↩️  Seed skipped (already has data)');
+      return;
+    }
 
-    const initialBooks = [
+    const initialBooks: Omit<Book, 'id' | 'createdAt'>[] = [
       {
+        uuid: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
         title: 'Harry Potter e a Pedra Filosofal',
         author: 'J.K. Rowling',
         genre: 'Fantasia',
         cover: 'https://m.media-amazon.com/images/I/81ibfYk4qmL._AC_UF1000,1000_QL80_.jpg',
         pages: 264,
         isbn: '9788532530787',
-        description: 'Harry Potter é um garoto órfão que vive infeliz com seus tios, os Dursley. Ele recebe uma carta contendo um convite para ingressar em Hogwarts, uma famosa escola especializada em formar jovens bruxos.',
+        description:
+          'Harry Potter é um garoto órfão que vive infeliz com seus tios, os Dursley. Ele recebe uma carta contendo um convite para ingressar em Hogwarts, uma famosa escola especializada em formar jovens bruxos.',
       },
       {
+        uuid: 'c7d5a60a-8fcb-4c6c-a891-836ff3ed40f8',
         title: '1984',
         author: 'George Orwell',
         genre: 'Ficção Distópica',
         cover: 'https://m.media-amazon.com/images/I/819js3EQwbL._AC_UF1000,1000_QL80_.jpg',
         pages: 416,
         isbn: '9788535914849',
-        description: 'Winston Smith é um funcionário público cuja função é reescrever a história de forma a colocar os líderes de seu país sob uma luz positiva.',
+        description:
+          'Winston Smith é um funcionário público cuja função é reescrever a história de forma a colocar os líderes de seu país sob uma luz positiva.',
       },
       {
+        uuid: 'af9e1cf6-ec1f-4b74-8b2d-02cb72c1a6c5',
         title: 'O Senhor dos Anéis',
         author: 'J.R.R. Tolkien',
         genre: 'Fantasia',
         cover: 'https://m.media-amazon.com/images/I/71jLBXtWJWL._AC_UF1000,1000_QL80_.jpg',
         pages: 1178,
         isbn: '9788533613379',
-        description: 'Uma aventura épica na Terra-média, onde o hobbit Frodo Bolseiro deve destruir um anel mágico para salvar o mundo.',
+        description:
+          'Uma aventura épica na Terra-média, onde o hobbit Frodo Bolseiro deve destruir um anel mágico para salvar o mundo.',
       },
       {
+        uuid: '5f64e6df-bc47-45b7-b5c8-89132ed5e073',
         title: 'Dom Casmurro',
         author: 'Machado de Assis',
         genre: 'Romance',
         cover: 'https://m.media-amazon.com/images/I/71Q0XW32yXL._AC_UF1000,1000_QL80_.jpg',
         pages: 256,
         isbn: '9788544001080',
-        description: 'Bentinho narra sua vida, desde a infância até a maturidade, e sua relação com Capitu.',
+        description:
+          'Bentinho narra sua vida, desde a infância até a maturidade, e sua relação com Capitu.',
       },
       {
+        uuid: '9c97b1a7-bdd8-42e3-b1b2-0db7a32a92cf',
         title: 'O Pequeno Príncipe',
         author: 'Antoine de Saint-Exupéry',
         genre: 'Fábula',
         cover: 'https://m.media-amazon.com/images/I/71OZY035FKL._AC_UF1000,1000_QL80_.jpg',
         pages: 96,
         isbn: '9788595081499',
-        description: 'Um piloto cai com seu avião no deserto e encontra um pequeno príncipe vindo de outro planeta.',
+        description:
+          'Um piloto cai com seu avião no deserto e encontra um pequeno príncipe vindo de outro planeta.',
       },
       {
+        uuid: 'b8e9ab2d-21a9-47ef-a2cb-1e9c90362a44',
         title: 'A Culpa é das Estrelas',
         author: 'John Green',
         genre: 'Romance',
         cover: 'https://m.media-amazon.com/images/I/71g6xZREFYL._AC_UF1000,1000_QL80_.jpg',
         pages: 288,
         isbn: '9788580573466',
-        description: 'Hazel e Gus compartilham humor ácido, um desprezo por tudo que é convencional e, acima de tudo, amor.',
+        description:
+          'Hazel e Gus compartilham humor ácido, um desprezo por tudo que é convencional e, acima de tudo, amor.',
       },
       {
+        uuid: '682d7f86-f013-46e4-b4b9-601f23632c6a',
         title: 'O Hobbit',
         author: 'J.R.R. Tolkien',
         genre: 'Fantasia',
         cover: 'https://m.media-amazon.com/images/I/91M9xPIf10L._AC_UF1000,1000_QL80_.jpg',
         pages: 310,
         isbn: '9788595084742',
-        description: 'Bilbo Bolseiro é convocado pelo mago Gandalf para participar de uma aventura com treze anões.',
+        description:
+          'Bilbo Bolseiro é convocado pelo mago Gandalf para participar de uma aventura com treze anões.',
       },
       {
+        uuid: '93710c3f-9d7a-4d5a-9b08-b6e4cfac5a9d',
         title: 'Percy Jackson: O Ladrão de Raios',
         author: 'Rick Riordan',
         genre: 'Aventura',
         cover: 'https://m.media-amazon.com/images/I/91WN6a6F3LL._AC_UF1000,1000_QL80_.jpg',
         pages: 400,
         isbn: '9788580575071',
-        description: 'Percy Jackson descobre ser um semideus e precisa impedir uma guerra entre os deuses do Olimpo.',
+        description:
+          'Percy Jackson descobre ser um semideus e precisa impedir uma guerra entre os deuses do Olimpo.',
       },
       {
+        uuid: 'edc8150e-dc54-4e3e-a939-cb45023166b1',
         title: 'As Crônicas de Nárnia',
         author: 'C.S. Lewis',
         genre: 'Fantasia',
         cover: 'https://m.media-amazon.com/images/I/71yJLhQekBL._AC_UF1000,1000_QL80_.jpg',
         pages: 767,
         isbn: '9788578277123',
-        description: 'Quatro irmãos descobrem um mundo mágico dentro de um guarda-roupa.',
+        description:
+          'Quatro irmãos descobrem um mundo mágico dentro de um guarda-roupa.',
       },
       {
+        uuid: '3b3e278d-dc6b-4cf7-bb7a-6e1a8156d51d',
         title: 'O Código Da Vinci',
         author: 'Dan Brown',
         genre: 'Suspense',
         cover: 'https://m.media-amazon.com/images/I/71y4V9RBs8L._AC_UF1000,1000_QL80_.jpg',
         pages: 432,
         isbn: '9788580411379',
-        description: 'Robert Langdon investiga um assassinato no Museu do Louvre que revela segredos históricos.',
+        description:
+          'Robert Langdon investiga um assassinato no Museu do Louvre que revela segredos históricos.',
       },
     ];
 
-    for (const book of initialBooks) {
+    for (const b of initialBooks) {
       try {
-        await this.addBookToCatalog(book);
-      } catch (error) {
-        console.error(`❌ Error seeding book: ${book.title}`, error);
+        await this.addBookToCatalog(b);
+      } catch (e) {
+        console.error(`❌ Error seeding book: ${b.title}`, e);
       }
     }
-
     console.log('✅ Initial books seeded successfully');
   }
 
-  // ==================== MÉTODOS DE USUÁRIO ====================
+  /** ===== Helpers ===== */
+  private async ensureBooksTableWithUuid() {
+    const cols = await this.db.getAllAsync<{ name: string }>('PRAGMA table_info(books);');
+    const hasUuid = cols.some(c => c.name === 'uuid');
+    if (!hasUuid) {
+      await this.db.execAsync?.('ALTER TABLE books ADD COLUMN uuid TEXT;');
+      try {
+        await this.db.execAsync?.('CREATE UNIQUE INDEX IF NOT EXISTS idx_books_uuid ON books(uuid);');
+      } catch {}
+    }
+  }
 
+  /** ==================== USUÁRIO ==================== */
   async registerUser(username: string, email: string, password: string): Promise<boolean> {
     try {
-      const result = await this.db.runAsync(
+      const res = await this.db.runAsync?.(
         'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
         [username, email, password]
       );
-      console.log('✅ User registered:', { username, email, insertId: result.lastInsertRowId });
-      return result.changes > 0;
+      console.log('✅ User registered:', { username, email, insertId: res?.lastInsertRowId });
+      return (res?.changes ?? 0) > 0;
     } catch (error) {
       console.error('❌ Error registering user:', error);
       return false;
@@ -294,12 +342,11 @@ class DatabaseService {
 
   async loginUser(email: string, password: string): Promise<User | null> {
     try {
-      const result = await this.db.getFirstAsync<User>(
+      const u = await this.db.getFirstAsync<User>(
         'SELECT * FROM users WHERE email = ? AND password = ?',
         [email, password]
       );
-      console.log('🔑 Login attempt:', { email, found: !!result });
-      return result || null;
+      return u ?? null;
     } catch (error) {
       console.error('❌ Error during login:', error);
       return null;
@@ -308,13 +355,11 @@ class DatabaseService {
 
   async checkEmailExists(email: string): Promise<boolean> {
     try {
-      const result = await this.db.getFirstAsync<{ count: number }>(
+      const r = await this.db.getFirstAsync<{ count: number }>(
         'SELECT COUNT(*) as count FROM users WHERE email = ?',
         [email]
       );
-      const exists = (result?.count ?? 0) > 0;
-      console.log('📧 Email check:', { email, exists });
-      return exists;
+      return (r?.count ?? 0) > 0;
     } catch (error) {
       console.error('❌ Error checking email:', error);
       return false;
@@ -323,120 +368,172 @@ class DatabaseService {
 
   async getAllUsers(): Promise<User[]> {
     try {
-      const users = await this.db.getAllAsync<User>('SELECT * FROM users');
-      console.log('👥 All users:', users);
-      return users;
+      return await this.db.getAllAsync<User>('SELECT * FROM users ORDER BY createdAt DESC;');
     } catch (error) {
       console.error('❌ Error getting all users:', error);
       return [];
     }
   }
 
-  // ==================== MÉTODOS DE LIVROS (CATÁLOGO) ====================
-
   async addBookToCatalog(book: Omit<Book, 'id' | 'createdAt'>): Promise<number | null> {
     try {
-      // Verifica se o livro já existe pelo ISBN ou título+autor
-      if (book.isbn) {
-        const existing = await this.db.getFirstAsync<Book>(
-          'SELECT id FROM books WHERE isbn = ?',
-          [book.isbn]
+      await this.ensureBooksTableWithUuid();
+
+      if (book.uuid) {
+        const byUuid = await this.db.getFirstAsync<{ id: number }>(
+          'SELECT id FROM books WHERE uuid = ? LIMIT 1;',
+          [book.uuid]
         );
-        if (existing) {
-          console.log('📚 Book already exists in catalog:', existing.id);
-          return existing.id;
-        }
+        if (byUuid) return byUuid.id;
       }
 
-      const result = await this.db.runAsync(
-        `INSERT INTO books (title, author, genre, cover, pages, isbn, description) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [book.title, book.author, book.genre, book.cover, book.pages, book.isbn || null, book.description || '']
+      if (book.isbn) {
+        const byIsbn = await this.db.getFirstAsync<{ id: number }>(
+          'SELECT id FROM books WHERE isbn = ? LIMIT 1;',
+          [book.isbn]
+        );
+        if (byIsbn) return byIsbn.id;
+      }
+
+      const byTitleAuthor = await this.db.getFirstAsync<{ id: number }>(
+        'SELECT id FROM books WHERE title = ? AND author = ? LIMIT 1;',
+        [book.title, book.author]
       );
-      console.log('✅ Book added to catalog:', { title: book.title, insertId: result.lastInsertRowId });
-      return result.lastInsertRowId ?? null;
+      if (byTitleAuthor) return byTitleAuthor.id;
+
+      const res = await this.db.runAsync?.(
+        `INSERT INTO books (uuid, title, author, genre, cover, pages, isbn, description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          book.uuid ?? null,
+          book.title,
+          book.author,
+          book.genre ?? null,
+          book.cover ?? null,
+          book.pages ?? 0,         
+          book.isbn ?? null,
+          book.description ?? null,
+        ]
+      );
+      return Number(res?.lastInsertRowId ?? 0) || null;
     } catch (error) {
       console.error('❌ Error adding book to catalog:', error);
       return null;
     }
   }
 
+  async upsertBookByUuid(book: Omit<Book, 'id' | 'createdAt'>): Promise<number | null> {
+    await this.ensureBooksTableWithUuid();
+
+    if (!book.uuid) {
+      return this.addBookToCatalog(book);
+    }
+
+    const existing = await this.db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM books WHERE uuid = ? LIMIT 1;',
+      [book.uuid]
+    );
+
+    if (existing?.id) {
+      await this.db.runAsync?.(
+        `UPDATE books
+           SET title = ?, author = ?, genre = ?, cover = ?, pages = ?, isbn = ?, description = ?
+         WHERE uuid = ?;`,
+        [
+          book.title,
+          book.author,
+          book.genre ?? null,
+          book.cover ?? null,
+          book.pages ?? 0,
+          book.isbn ?? null,
+          book.description ?? null,
+          book.uuid,
+        ]
+      );
+      return existing.id;
+    }
+
+    return this.addBookToCatalog(book);
+  }
+
   async getBookFromCatalog(bookId: number): Promise<Book | null> {
     try {
-      const book = await this.db.getFirstAsync<Book>(
-        'SELECT * FROM books WHERE id = ?',
+      const b = await this.db.getFirstAsync<Book>(
+        `SELECT id, uuid, title, author, genre, cover,
+                COALESCE(pages, 0) as pages,               -- ✅ garante número
+                isbn, description, createdAt
+           FROM books WHERE id = ?`,
         [bookId]
       );
-      return book || null;
+      return b ?? null;
     } catch (error) {
       console.error('❌ Error getting book from catalog:', error);
       return null;
     }
   }
 
+  async getBookByUuid(uuid: string): Promise<Book | null> {
+    try {
+      const b = await this.db.getFirstAsync<Book>(
+        `SELECT id, uuid, title, author, genre, cover,
+                COALESCE(pages, 0) as pages,               -- ✅
+                isbn, description, createdAt
+           FROM books WHERE uuid = ? LIMIT 1;`,
+        [uuid]
+      );
+      return b ?? null;
+    } catch (error) {
+      console.error('❌ Error getBookByUuid:', error);
+      return null;
+    }
+  }
+
   async getAllBooksFromCatalog(): Promise<Book[]> {
     try {
-      const books = await this.db.getAllAsync<Book>(
-        'SELECT * FROM books ORDER BY title ASC'
+      return await this.db.getAllAsync<Book>(
+        `SELECT id, uuid, title, author, genre, cover,
+                COALESCE(pages, 0) as pages,               -- ✅
+                isbn, description, createdAt
+           FROM books
+           ORDER BY title ASC;`
       );
-      console.log('📚 Catalog books retrieved:', books.length);
-      return books;
     } catch (error) {
       console.error('❌ Error getting catalog books:', error);
       return [];
     }
   }
 
-  async getUserBookById(userBookId: number): Promise<UserBookDetail | null> {
-    try {
-      const book = await this.db.getFirstAsync<UserBookDetail>(
-        `SELECT 
-          ub.id as userBookId,
-          ub.currentPage,
-          ub.status,
-          ub.notes,
-          ub.startedAt,
-          ub.completedAt,
-          b.*
-         FROM user_books ub
-         INNER JOIN books b ON ub.bookId = b.id
-         WHERE ub.id = ?`,
-        [userBookId]
-      );
-      return book || null;
-    } catch (error) {
-      console.error('❌ Error getting user book by id:', error);
-      return null;
-    }
-  }
-
   async searchBooksInCatalog(searchTerm: string): Promise<Book[]> {
     try {
-      const books = await this.db.getAllAsync<Book>(
-        'SELECT * FROM books WHERE title LIKE ? OR author LIKE ? ORDER BY title',
+      return await this.db.getAllAsync<Book>(
+        `SELECT id, uuid, title, author, genre, cover,
+                COALESCE(pages, 0) as pages,               -- ✅
+                isbn, description, createdAt
+           FROM books
+           WHERE title LIKE ? OR author LIKE ?
+           ORDER BY title ASC;`,
         [`%${searchTerm}%`, `%${searchTerm}%`]
       );
-      console.log('🔍 Books found:', books.length);
-      return books;
     } catch (error) {
       console.error('❌ Error searching books:', error);
       return [];
     }
   }
 
-  // ==================== MÉTODOS DE BIBLIOTECA DO USUÁRIO ====================
-
-  async addBookToUserLibrary(userId: number, bookId: number, status: 'reading' | 'completed' | 'wishlist' = 'wishlist'): Promise<number | null> {
+  async addBookToUserLibrary(
+    userId: number,
+    bookId: number,
+    status: 'reading' | 'completed' | 'wishlist' = 'wishlist'
+  ): Promise<number | null> {
     try {
-      const result = await this.db.runAsync(
-        `INSERT INTO user_books (userId, bookId, status, startedAt) 
+      const res = await this.db.runAsync?.(
+        `INSERT INTO user_books (userId, bookId, status, startedAt)
          VALUES (?, ?, ?, ?)`,
         [userId, bookId, status, status === 'reading' ? new Date().toISOString() : null]
       );
-      console.log('✅ Book added to user library:', { userId, bookId, insertId: result.lastInsertRowId });
-      return result.lastInsertRowId ?? null;
+      return res?.lastInsertRowId ?? null;
     } catch (error: any) {
-      if (error.message?.includes('UNIQUE constraint')) {
+      if (error?.message?.includes('UNIQUE constraint')) {
         console.log('⚠️ Book already in user library');
         return null;
       }
@@ -445,50 +542,99 @@ class DatabaseService {
     }
   }
 
+  async getUserBookById(userBookId: number): Promise<UserBookDetail | null> {
+    try {
+      const row = await this.db.getFirstAsync<UserBookDetail>(
+        `SELECT 
+           ub.id as userBookId,
+           ub.currentPage,
+           ub.status,
+           ub.notes,
+           ub.startedAt,
+           ub.completedAt,
+           b.id,
+           b.uuid,
+           b.title,
+           b.author,
+           b.genre,
+           b.cover,
+           COALESCE(b.pages, 0) as pages,   -- ✅
+           b.isbn,
+           b.description,
+           b.createdAt
+         FROM user_books ub
+         INNER JOIN books b ON ub.bookId = b.id
+         WHERE ub.id = ?`,
+        [userBookId]
+      );
+      return row ?? null;
+    } catch (error) {
+      console.error('❌ Error getting user book by id:', error);
+      return null;
+    }
+  }
+
   async getUserBooks(userId: number): Promise<UserBookDetail[]> {
     try {
-      const books = await this.db.getAllAsync<UserBookDetail>(
+      return await this.db.getAllAsync<UserBookDetail>(
         `SELECT 
-          ub.id as userBookId,
-          ub.currentPage,
-          ub.status,
-          ub.notes,
-          ub.startedAt,
-          ub.completedAt,
-          b.*
+           ub.id as userBookId,
+           ub.currentPage,
+           ub.status,
+           ub.notes,
+           ub.startedAt,
+           ub.completedAt,
+           b.id,
+           b.uuid,
+           b.title,
+           b.author,
+           b.genre,
+           b.cover,
+           COALESCE(b.pages, 0) as pages,   -- ✅
+           b.isbn,
+           b.description,
+           b.createdAt
          FROM user_books ub
          INNER JOIN books b ON ub.bookId = b.id
          WHERE ub.userId = ?
          ORDER BY ub.createdAt DESC`,
         [userId]
       );
-      console.log('📚 User books retrieved:', books.length);
-      return books;
     } catch (error) {
       console.error('❌ Error getting user books:', error);
       return [];
     }
   }
 
-  async getUserBooksByStatus(userId: number, status: 'reading' | 'completed' | 'wishlist'): Promise<UserBookDetail[]> {
+  async getUserBooksByStatus(
+    userId: number,
+    status: 'reading' | 'completed' | 'wishlist'
+  ): Promise<UserBookDetail[]> {
     try {
-      const books = await this.db.getAllAsync<UserBookDetail>(
+      return await this.db.getAllAsync<UserBookDetail>(
         `SELECT 
-          ub.id as userBookId,
-          ub.currentPage,
-          ub.status,
-          ub.notes,
-          ub.startedAt,
-          ub.completedAt,
-          b.*
+           ub.id as userBookId,
+           ub.currentPage,
+           ub.status,
+           ub.notes,
+           ub.startedAt,
+           ub.completedAt,
+           b.id,
+           b.uuid,
+           b.title,
+           b.author,
+           b.genre,
+           b.cover,
+           COALESCE(b.pages, 0) as pages,   -- ✅
+           b.isbn,
+           b.description,
+           b.createdAt
          FROM user_books ub
          INNER JOIN books b ON ub.bookId = b.id
          WHERE ub.userId = ? AND ub.status = ?
          ORDER BY ub.createdAt DESC`,
         [userId, status]
       );
-      console.log(`📚 User books (${status}):`, books.length);
-      return books;
     } catch (error) {
       console.error('❌ Error getting user books by status:', error);
       return [];
@@ -496,90 +642,55 @@ class DatabaseService {
   }
 
   async updateUserBook(userBookId: number, updates: Partial<UserBook>): Promise<boolean> {
-  try {
-    console.log('🔄 === UPDATE USER BOOK START ===');
-    console.log('📝 userBookId:', userBookId);
-    console.log('📝 updates:', JSON.stringify(updates, null, 2));
+    try {
+      const fields: string[] = [];
+      const values: any[] = [];
 
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    if (updates.currentPage !== undefined) {
-      fields.push('currentPage = ?');
-      values.push(updates.currentPage);
-      console.log('✏️ Adding currentPage:', updates.currentPage);
-    }
-
-    if (updates.status !== undefined) {
-      fields.push('status = ?');
-      values.push(updates.status);
-      console.log('✏️ Adding status:', updates.status);
-
-      // Atualiza datas automaticamente
-      if (updates.status === 'reading' && !updates.startedAt) {
-        fields.push('startedAt = ?');
-        values.push(new Date().toISOString());
-        console.log('✏️ Adding startedAt (auto)');
+      if (updates.currentPage !== undefined) {
+        fields.push('currentPage = ?');
+        values.push(updates.currentPage);
       }
-      if (updates.status === 'completed') {
-        fields.push('completedAt = ?');
-        values.push(new Date().toISOString());
-        console.log('✏️ Adding completedAt (auto)');
+      if (updates.status !== undefined) {
+        fields.push('status = ?');
+        values.push(updates.status);
+
+        if (updates.status === 'reading' && !updates.startedAt) {
+          fields.push('startedAt = ?');
+          values.push(new Date().toISOString());
+        }
+        if (updates.status === 'completed') {
+          fields.push('completedAt = ?');
+          values.push(new Date().toISOString());
+        }
       }
-    }
+      if (updates.notes !== undefined) {
+        fields.push('notes = ?');
+        values.push(updates.notes);
+      }
 
-    if (updates.notes !== undefined) {
-      fields.push('notes = ?');
-      values.push(updates.notes);
-      console.log('✏️ Adding notes');
-    }
+      if (fields.length === 0) return false;
 
-    if (fields.length === 0) {
-      console.log('⚠️ No fields to update!');
+      values.push(userBookId);
+      const res = await this.db.runAsync?.(
+        `UPDATE user_books SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+      return (res?.changes ?? 0) > 0;
+    } catch (error) {
+      console.error('❌ Error updating user book:', error);
       return false;
     }
-
-    values.push(userBookId);
-
-    const query = `UPDATE user_books SET ${fields.join(', ')} WHERE id = ?`;
-    console.log('📋 SQL Query:', query);
-    console.log('📋 SQL Values:', values);
-
-    const result = await this.db.runAsync(query, values);
-
-    console.log('✅ User book updated:', { userBookId, changes: result.changes });
-
-    // 👇 VERIFICA SE REALMENTE SALVOU NO BANCO
-    const verification = await this.db.getFirstAsync<any>(
-      'SELECT * FROM user_books WHERE id = ?',
-      [userBookId]
-    );
-    console.log('🔍 Verification - Book after update:', verification);
-    console.log('🔍 Verification - Status is:', verification?.status);
-    console.log('🔄 === UPDATE USER BOOK END ===\n');
-
-    return result.changes > 0;
-  } catch (error) {
-    console.error('❌ Error updating user book:', error);
-    return false;
   }
-}
 
   async removeBookFromUserLibrary(userBookId: number): Promise<boolean> {
     try {
-      const result = await this.db.runAsync(
-        'DELETE FROM user_books WHERE id = ?',
-        [userBookId]
-      );
-      console.log('✅ Book removed from user library:', { userBookId });
-      return result.changes > 0;
+      const res = await this.db.runAsync?.('DELETE FROM user_books WHERE id = ?', [userBookId]);
+      return (res?.changes ?? 0) > 0;
     } catch (error) {
       console.error('❌ Error removing book from user library:', error);
       return false;
     }
   }
-
-  // ==================== MÉTODOS DE ESTATÍSTICAS ====================
 
   async getUserStats(userId: number): Promise<{
     total: number;
@@ -588,22 +699,21 @@ class DatabaseService {
     wishlist: number;
   }> {
     try {
-      const result = await this.db.getFirstAsync<any>(
+      const r = await this.db.getFirstAsync<any>(
         `SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN status = 'reading' THEN 1 ELSE 0 END) as reading,
-          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-          SUM(CASE WHEN status = 'wishlist' THEN 1 ELSE 0 END) as wishlist
+           COUNT(*) as total,
+           SUM(CASE WHEN status = 'reading'  THEN 1 ELSE 0 END) as reading,
+           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+           SUM(CASE WHEN status = 'wishlist' THEN 1 ELSE 0 END) as wishlist
          FROM user_books
          WHERE userId = ?`,
         [userId]
       );
-
       return {
-        total: result?.total ?? 0,
-        reading: result?.reading ?? 0,
-        completed: result?.completed ?? 0,
-        wishlist: result?.wishlist ?? 0,
+        total: r?.total ?? 0,
+        reading: r?.reading ?? 0,
+        completed: r?.completed ?? 0,
+        wishlist: r?.wishlist ?? 0,
       };
     } catch (error) {
       console.error('❌ Error getting user stats:', error);
@@ -613,4 +723,74 @@ class DatabaseService {
 }
 
 export const database = new DatabaseService();
-export type { User, Book, UserBook, UserBookDetail };
+
+export type SaveOrUpdateBookByUUIDInput =
+  Omit<Book, 'id' | 'createdAt' | 'genre' | 'cover' | 'pages' | 'isbn' | 'description'> &
+  Partial<
+    Pick<
+      UserBook,
+      'userId' | 'currentPage' | 'status' | 'notes' | 'startedAt' | 'completedAt'
+    >
+  >;
+
+  export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  return SQLite.openDatabaseAsync('dexbook.db');
+}
+
+export type SaveOrUpdateBookByUUIDOutput = {
+  book: Book;
+  userBook?: UserBook;
+};
+
+export async function saveOrUpdateBookByUUID(
+  userId: number,
+  bookData: { uuid: string; title: string; author: string }
+) {
+  const db = await getDb();
+
+  const existingBook = await db.getFirstAsync<Book>(
+    'SELECT * FROM books WHERE uuid = ?',
+    [bookData.uuid]
+  );
+
+  let bookId: number;
+
+  if (existingBook) {
+    bookId = existingBook.id;
+  } else {
+    await db.runAsync(
+      'INSERT INTO books (uuid, title, author, createdAt) VALUES (?, ?, ?, datetime("now"))',
+      [bookData.uuid, bookData.title, bookData.author]
+    );
+
+    const inserted = await db.getFirstAsync<Book>(
+      'SELECT * FROM books WHERE uuid = ?',
+      [bookData.uuid]
+    );
+    bookId = inserted!.id;
+  }
+
+  const existingUserBook = await db.getFirstAsync<UserBook>(
+    'SELECT * FROM user_books WHERE userId = ? AND bookId = ?',
+    [userId, bookId]
+  );
+
+  if (existingUserBook) {
+    await db.runAsync(
+      'UPDATE user_books SET status = ?, startedAt = datetime("now") WHERE id = ?',
+      ['reading', existingUserBook.id]
+    );
+  } else {
+    await db.runAsync(
+      'INSERT INTO user_books (userId, bookId, status, currentPage, startedAt, createdAt) VALUES (?, ?, ?, ?, datetime("now"), datetime("now"))',
+      [userId, bookId, 'reading', 0]
+    );
+  }
+}
+
+export async function getBookByUUID(uuid: string) {
+  return database.getBookByUuid(uuid);
+}
+export async function getAllBooks(): Promise<Book[]> {
+  return database.getAllBooksFromCatalog();
+}

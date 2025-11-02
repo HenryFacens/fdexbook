@@ -1,5 +1,5 @@
 import { useBooks } from '@/src/contexts/BooksContext';
-import { User } from '@/src/services/database';
+import { Book, getDb, saveOrUpdateBookByUUID, User } from '@/src/services/database';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -24,7 +24,7 @@ const SCAN_AREA_SIZE = width * 0.7;
 export default function HomeScreen() {
     const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
-    const { books, loading, stats, refreshBooks } = useBooks(); // 👈 ADICIONE stats
+    const { books, loading, stats, refreshBooks } = useBooks();
     const [refreshing, setRefreshing] = useState(false);
     const [scannerVisible, setScannerVisible] = useState(false);
     const [celebrationVisible, setCelebrationVisible] = useState(false);
@@ -80,31 +80,146 @@ export default function HomeScreen() {
         setScannerVisible(true);
     };
 
-    // Função para simular scan bem-sucedido (TESTE)
     const handleFakeScan = () => {
         setScannerVisible(false);
         setCelebrationVisible(true);
     };
 
-    const handleBarCodeScanned = ({type, data}: { type: string; data: string }) => {
-        if (scanned) return;
 
-        setScanned(true);
-        setScannerVisible(false);
 
-        try {
-            const bookData = JSON.parse(data);
+const debugLog = (...a: any[]) => console.log('[QR@Home]', ...a);
 
-            if (bookData.app === 'Dexbook' && bookData.id) {
-                setScannedBook(bookData);
-                setCelebrationVisible(true);
-            } else {
-                Alert.alert('QR Code Inválido', 'Este QR Code não pertence ao Dexbook');
-            }
-        } catch (error) {
-            Alert.alert('Erro', 'Não foi possível ler este QR Code');
-        }
-    };
+function stripBOM(s: string) {
+  if (!s) return s;
+  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
+}
+
+function htmlEntityDecode(s: string) {
+  if (!s) return s;
+  return s
+    .replace(/&quot;|&#34;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+async function getCurrentUser(): Promise<User | null> {
+  const sessionRaw = await AsyncStorage.getItem('user_session');
+  if (!sessionRaw) return null;
+
+  try {
+    const parsed = JSON.parse(sessionRaw);
+    const u = parsed?.user ?? parsed;
+    if (u && typeof u.id === 'number') return u as User;
+  } catch {}
+  return null;
+}
+
+
+function parseQRPayload(raw0: string) {
+  let raw = stripBOM(String(raw0 || '')).trim();
+  raw = htmlEntityDecode(raw);
+  debugLog('raw=', raw.slice(0, 120) + (raw.length > 120 ? '…' : ''));
+
+  if (raw.startsWith('data:')) {
+    const comma = raw.indexOf(',');
+    if (comma > 0) {
+      const payload = decodeURIComponent(raw.slice(comma + 1));
+      return JSON.parse(payload);
+    }
+  }
+
+  const i0 = raw.indexOf('{');
+  const i1 = raw.lastIndexOf('}');
+  if (i0 >= 0 && i1 > i0) {
+    const maybe = raw.slice(i0, i1 + 1);
+    return JSON.parse(maybe);
+  }
+
+  return JSON.parse(raw);
+}
+
+function normalizeMinimal(obj: any) {
+  if (!obj || typeof obj !== 'object') throw new Error('QR inválido');
+
+  const candidate =
+    obj.book && typeof obj.book === 'object' ? obj.book :
+    obj.data && typeof obj.data === 'object' ? obj.data :
+    obj;
+
+  const uuidRaw = candidate.uuid ?? candidate.UUID ?? candidate.Uuid;
+  const titleRaw = candidate.title ?? candidate.Title;
+  const authorRaw = candidate.author ?? candidate.Author;
+
+  const toCleanString = (v: any) =>
+    (typeof v === 'string' ? v : v == null ? '' : String(v))
+      .replace(/\u200B|\u200C|\u200D|\u2060|\uFEFF/g, '') 
+      .trim();
+
+  const uuid = toCleanString(uuidRaw);
+  const title = toCleanString(titleRaw);
+  const author = toCleanString(authorRaw);
+
+  if (!uuid || !title || !author) {
+    throw new Error('QR deve conter uuid, title e author');
+  }
+  return { uuid, title, author };
+}
+
+const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+  if (scanned) return;
+  setScanned(true);
+  setScannerVisible(false);
+
+  try {
+    const parsed = parseQRPayload(data);
+    debugLog('parsed keys =', Object.keys(parsed));
+    const { uuid, title, author } = normalizeMinimal(parsed);
+
+    const currentUser = await getCurrentUser();
+    if (!currentUser?.id) {
+      Alert.alert('Sessão expirada', 'Faça login para adicionar livros.');
+      setScanned(false);
+      router.push('/(auth)/login');
+      return;
+    }
+
+    const db = await getDb();
+    const existingBook = await db.getFirstAsync<Book>(
+      'SELECT * FROM books WHERE uuid = ?',
+      [uuid]
+    );
+
+    if (!existingBook) {
+      Alert.alert(
+        'Livro não encontrado',
+        'Este QR Code não corresponde a nenhum livro cadastrado no Dexbook.'
+      );
+      setScanned(false);
+      return;
+    }
+
+    await saveOrUpdateBookByUUID(currentUser.id, {
+      uuid: existingBook.uuid!,
+      title: existingBook.title,
+      author: existingBook.author,
+    });
+
+    await refreshBooks?.();
+    Alert.alert('📖 Livro atualizado', `“${existingBook.title}” marcado como Lendo.`);
+  } catch (err: any) {
+    debugLog('err=', err?.message || err);
+    const msg =
+      typeof err?.message === 'string'
+        ? err.message
+        : 'Não foi possível processar este QR Code.';
+    Alert.alert('QR inválido', msg);
+    setScanned(false);
+  } finally {
+    setTimeout(() => setScanned(false), 300);
+  }
+};
 
     const closeScanner = () => {
         setScannerVisible(false);
@@ -129,7 +244,7 @@ export default function HomeScreen() {
     };
 
     const readingBooks = books.filter(b => b.status === 'reading');
-    const recentBooks = books.slice(0, 5); // Pega os 5 mais recentes
+    const recentBooks = books.slice(0, 5);
 
     return (
         <>
@@ -592,7 +707,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
-    // Celebration Modal
     celebrationContainer: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
