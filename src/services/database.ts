@@ -7,6 +7,7 @@ export interface User {
   password: string;
   createdAt?: string;
 }
+
 export interface Book {
   id: number;
   uuid?: string;     
@@ -55,8 +56,37 @@ class DatabaseService {
       try { (this.db as any).exec('PRAGMA foreign_keys = ON;'); } catch {}
     }
 
-    this.initDatabase();
+    this.resetDatabase();
   }
+
+    async resetDatabase(): Promise<boolean> {
+      try {
+        console.log('🗑️  Resetting database...');
+
+        // Fechar conexão atual
+        await this.db.closeAsync?.();
+
+        // Deletar o banco de dados (funciona em versões mais recentes do Expo)
+        try {
+          await SQLite.deleteDatabaseAsync(this.DB_NAME);
+          console.log('✅ Database deleted successfully');
+        } catch (deleteError) {
+          console.log('⚠️  Could not delete database file, continuing...');
+        }
+
+        // Recriar a conexão
+        this.db = SQLite.openDatabaseSync?.(this.DB_NAME) ?? (SQLite as any).openDatabase(this.DB_NAME);
+
+        // Reinicializar o banco
+        await this.initDatabase();
+
+        console.log('✅ Database reset completed');
+        return true;
+      } catch (error) {
+        console.error('❌ Error resetting database:', error);
+        return false;
+      }
+    }
 
   private async getDatabaseVersion(): Promise<number> {
     try {
@@ -493,7 +523,7 @@ class DatabaseService {
       return await this.db.getAllAsync<Book>(
         `SELECT id, uuid, title, author, genre, cover,
                 COALESCE(pages, 0) as pages,               -- ✅
-                isbn, description, createdAt
+           createdAt
            FROM books
            ORDER BY title ASC;`
       );
@@ -737,60 +767,90 @@ export type SaveOrUpdateBookByUUIDInput =
   return SQLite.openDatabaseAsync('dexbook.db');
 }
 
-export type SaveOrUpdateBookByUUIDOutput = {
-  book: Book;
-  userBook?: UserBook;
-};
+export async function getAvailableBookUUIDs(): Promise<string[]> {
+  try {
+    const db = await getDb();
+    const books = await db.getAllAsync<{ uuid: string }>(
+      `SELECT uuid FROM books WHERE uuid IS NOT NULL`
+    );
+    return books.map(book => book.uuid).filter(Boolean) as string[];
+  } catch (error) {
+    console.error('❌ Erro ao buscar UUIDs:', error);
+    return [];
+  }
+}
 
 export async function saveOrUpdateBookByUUID(
   userId: number,
-  bookData: { uuid: string; title: string; author: string }
-) {
-  const db = await getDb();
+  bookData: { uuid: string }
+): Promise<Book | null> {
+  try {
+    const db = await getDb();
 
-  const existingBook = await db.getFirstAsync<Book>(
-    'SELECT * FROM books WHERE uuid = ?',
-    [bookData.uuid]
-  );
-
-  let bookId: number;
-
-  if (existingBook) {
-    bookId = existingBook.id;
-  } else {
-    await db.runAsync(
-      'INSERT INTO books (uuid, title, author, createdAt) VALUES (?, ?, ?, datetime("now"))',
-      [bookData.uuid, bookData.title, bookData.author]
-    );
-
-    const inserted = await db.getFirstAsync<Book>(
-      'SELECT * FROM books WHERE uuid = ?',
+    // 1. Busca APENAS o livro pelo UUID (não cria se não existir)
+    const existingBook = await db.getFirstAsync<Book>(
+      `SELECT * FROM books WHERE uuid = ?`,
       [bookData.uuid]
     );
-    bookId = inserted!.id;
-  }
 
-  const existingUserBook = await db.getFirstAsync<UserBook>(
-    'SELECT * FROM user_books WHERE userId = ? AND bookId = ?',
-    [userId, bookId]
-  );
+    // 2. Se não encontrou, retorna null
+    if (!existingBook) {
+      console.log('❌ Livro não encontrado no catálogo para UUID:', bookData.uuid);
+      return null;
+    }
 
-  if (existingUserBook) {
-    await db.runAsync(
-      'UPDATE user_books SET status = ?, startedAt = datetime("now") WHERE id = ?',
-      ['reading', existingUserBook.id]
+    console.log('📖 Livro encontrado:', existingBook.title);
+
+    // 3. Verifica se o usuário já tem este livro
+    const existingUserBook = await db.getFirstAsync<UserBook>(
+      `SELECT * FROM user_books WHERE userId = ? AND bookId = ?`,
+      [userId, existingBook.id]
     );
-  } else {
-    await db.runAsync(
-      'INSERT INTO user_books (userId, bookId, status, currentPage, startedAt, createdAt) VALUES (?, ?, ?, ?, datetime("now"), datetime("now"))',
-      [userId, bookId, 'reading', 0]
-    );
+
+    // 4. Adiciona ou atualiza para o usuário
+    if (existingUserBook) {
+      // Atualiza se já existe
+      await db.runAsync(
+        `UPDATE user_books 
+         SET status = 'reading', startedAt = datetime("now")
+         WHERE id = ?`,
+        [existingUserBook.id]
+      );
+      console.log('✅ Livro atualizado para "lendo"');
+    } else {
+      // Adiciona novo
+      await db.runAsync(
+        `INSERT INTO user_books 
+         (userId, bookId, status, currentPage, startedAt, createdAt) 
+         VALUES (?, ?, 'reading', 0, datetime("now"), datetime("now"))`,
+        [userId, existingBook.id]
+      );
+      console.log('✅ Livro adicionado à biblioteca como "lendo"');
+    }
+
+    return existingBook;
+
+  } catch (error) {
+    console.error('❌ Erro em saveOrUpdateBookByUUID:', error);
+    return null;
   }
 }
 
-export async function getBookByUUID(uuid: string) {
-  return database.getBookByUuid(uuid);
+
+export async function getBookByUUID(uuid: string): Promise<Book | null> {
+  try {
+    const db = await getDb();
+    const book = await db.getFirstAsync<Book>(
+      `SELECT * FROM books WHERE uuid = ?`,
+      [uuid]
+    );
+    return book;
+  } catch (error) {
+    console.error('❌ Erro em getBookByUUID:', error);
+    return null;
+  }
 }
+
 export async function getAllBooks(): Promise<Book[]> {
   return database.getAllBooksFromCatalog();
 }

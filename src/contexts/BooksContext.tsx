@@ -34,7 +34,7 @@ export function BooksProvider({ children }: { children: ReactNode }) {
 
       if (userSession) {
         const user = JSON.parse(userSession);
-
+        console.log(user);
         const userBooks = await database.getUserBooks(user.id);
         console.log('📚 Books loaded in Context:', userBooks);
         console.log('📚 Books with reading status:', userBooks.filter(b => b.status === 'reading'));

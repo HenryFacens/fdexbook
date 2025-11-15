@@ -28,7 +28,7 @@ function parseQRPayload(raw0: string) {
   let raw = stripBOM(String(raw0 || '')).trim();
   raw = htmlEntityDecode(raw);
   debugLog('raw=', raw.slice(0, 120) + (raw.length > 120 ? '…' : ''));
-
+  console.log('raw=', raw)
   if (raw.startsWith('data:')) {
     const comma = raw.indexOf(',');
     if (comma > 0) {

@@ -1,5 +1,5 @@
 import { useBooks } from '@/src/contexts/BooksContext';
-import { Book, getDb, saveOrUpdateBookByUUID, User } from '@/src/services/database';
+import {Book, database, getBookByUUID, getDb, saveOrUpdateBookByUUID, User} from '@/src/services/database';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -121,27 +121,11 @@ function parseQRPayload(raw0: string) {
   let raw = stripBOM(String(raw0 || '')).trim();
   raw = htmlEntityDecode(raw);
   debugLog('raw=', raw.slice(0, 120) + (raw.length > 120 ? '…' : ''));
-
-  if (raw.startsWith('data:')) {
-    const comma = raw.indexOf(',');
-    if (comma > 0) {
-      const payload = decodeURIComponent(raw.slice(comma + 1));
-      return JSON.parse(payload);
-    }
-  }
-
-  const i0 = raw.indexOf('{');
-  const i1 = raw.lastIndexOf('}');
-  if (i0 >= 0 && i1 > i0) {
-    const maybe = raw.slice(i0, i1 + 1);
-    return JSON.parse(maybe);
-  }
-
-  return JSON.parse(raw);
+  return raw;
 }
 
 function normalizeMinimal(obj: any) {
-  if (!obj || typeof obj !== 'object') throw new Error('QR inválido');
+  // if (!obj || typeof obj !== 'object') throw new Error('QR inválido');
 
   const candidate =
     obj.book && typeof obj.book === 'object' ? obj.book :
@@ -154,7 +138,7 @@ function normalizeMinimal(obj: any) {
 
   const toCleanString = (v: any) =>
     (typeof v === 'string' ? v : v == null ? '' : String(v))
-      .replace(/\u200B|\u200C|\u200D|\u2060|\uFEFF/g, '') 
+      .replace(/\u200B|\u200C|\u200D|\u2060|\uFEFF/g, '')
       .trim();
 
   const uuid = toCleanString(uuidRaw);
@@ -173,9 +157,7 @@ const handleBarCodeScanned = async ({ type, data }: { type: string; data: string
   setScannerVisible(false);
 
   try {
-    const parsed = parseQRPayload(data);
-    debugLog('parsed keys =', Object.keys(parsed));
-    const { uuid, title, author } = normalizeMinimal(parsed);
+    const uuid = parseQRPayload(data);
 
     const currentUser = await getCurrentUser();
     if (!currentUser?.id) {
@@ -185,35 +167,32 @@ const handleBarCodeScanned = async ({ type, data }: { type: string; data: string
       return;
     }
 
-    const db = await getDb();
-    const existingBook = await db.getFirstAsync<Book>(
-      'SELECT * FROM books WHERE uuid = ?',
-      [uuid]
-    );
+    // Busca pelo UUID e adiciona para o usuário
+    const book = await saveOrUpdateBookByUUID(currentUser.id, {
+      uuid: uuid,
+    });
 
-    if (!existingBook) {
+    if (!book) {
       Alert.alert(
-        'Livro não encontrado',
+        'Livro Não Encontrado',
         'Este QR Code não corresponde a nenhum livro cadastrado no Dexbook.'
       );
       setScanned(false);
       return;
     }
 
-    await saveOrUpdateBookByUUID(currentUser.id, {
-      uuid: existingBook.uuid!,
-      title: existingBook.title,
-      author: existingBook.author,
-    });
-
+    // Atualiza a lista e mostra confirmação
     await refreshBooks?.();
-    Alert.alert('📖 Livro atualizado', `“${existingBook.title}” marcado como Lendo.`);
+    Alert.alert(
+      '📖 Livro Adicionado!',
+      `"${book.title}" foi adicionado à sua biblioteca como "Lendo".`
+    );
+
   } catch (err: any) {
     debugLog('err=', err?.message || err);
-    const msg =
-      typeof err?.message === 'string'
-        ? err.message
-        : 'Não foi possível processar este QR Code.';
+    const msg = typeof err?.message === 'string'
+      ? err.message
+      : 'Não foi possível processar este QR Code.';
     Alert.alert('QR inválido', msg);
     setScanned(false);
   } finally {
