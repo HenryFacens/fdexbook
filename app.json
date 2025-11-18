@@ -1,39 +1,39 @@
 {
   "expo": {
-    "name": "fdexbook",
-    "slug": "fdexbook",
+    "name": "Dexbook",
+    "slug": "dexbook",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fdexbook",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Este app usa a câmera para ler QR Codes e códigos de barras.",
         "NSMicrophoneUsageDescription": "Este app usa o microfone ao gravar vídeos (se você optar por isso)."
-      }
+      },
+      "bundleIdentifier": "com.anonymous.fdexbook"
     },
-
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.fdexbook"
+      "package": "com.anonymous.fdexbook",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -58,7 +58,6 @@
       ],
       "expo-sqlite"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
